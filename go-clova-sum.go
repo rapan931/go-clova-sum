@@ -1,6 +1,14 @@
 // https://github.com/aws/aws-lambda-go#for-developers-on-windows
 // https://mholt.github.io/json-to-go/
+// https://dev.classmethod.jp/cloud/aws/aws-lambda-supports-go/
+// https://docs.aws.amazon.com/ja_jp/lambda/latest/dg/go-programming-model-handler-types.html
 //
+// exapmple
+// > set GOOS=linux
+// > set GOARCH=amd64
+// > set CGO_ENABLED=0
+// > go build -o main main.go
+// > %USERPROFILE%\Go\bin\build-lambda-zip.exe -o main.zip main
 
 package main
 
