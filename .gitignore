@@ -4,8 +4,8 @@
 *.dll
 *.so
 *.dylib
-sum-quiz
-sum-quiz.zip
+sumQuiz
+sumQuiz.zip
 
 # Test binary, build with `go test -c`
 *.test

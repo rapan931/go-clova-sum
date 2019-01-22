@@ -3,13 +3,15 @@
 // > set GOOS=linux
 // > set GOARCH=amd64
 // > set CGO_ENABLED=0
-// > go build -o sum-quiz go-clova-sum-quiz.go & build-lambda-zip.exe -o sum-quiz.zip sum-quiz
+// > go build -o sumQuiz go-clova-sum-quiz.go & build-lambda-zip.exe -o sumQuiz.zip sumQuiz
 
 package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -17,14 +19,18 @@ import (
 
 type ClovaRequest struct {
 	// Version string `json:"version"`
-	// Session struct {
-	// 	New               bool `json:"new"`
-	// 	SessionID string `json:"sessionId"`
-	// 	User      struct {
-	// 		UserID      string `json:"userId"`
-	// 		AccessToken string `json:"accessToken"`
-	// 	} `json:"user"`
-	// } `json:"session"`
+	Session struct {
+		New               bool   `json:"new"`
+		SessionID         string `json:"sessionId"`
+		SessionAttributes struct {
+			Question string `json:"question"`
+			Correct  int    `json:"correct"`
+		} `json:"sessionAttributes"`
+		User struct {
+			UserID      string `json:"userId"`
+			AccessToken string `json:"accessToken"`
+		} `json:"user"`
+	} `json:"session"`
 	// Context struct {
 	// 	System struct {
 	// 		Application struct {
@@ -48,10 +54,6 @@ type ClovaRequest struct {
 	// 		} `json:"device"`
 	// 	} `json:"System"`
 	// } `json:"context"`
-	SessionAttributes struct {
-		Question string `json:"string"`
-		Correct  int    `json:"correct"`
-	} `json:"sessionAttributes"`
 	Request struct {
 		Type   string `json:"type"`
 		Intent struct {
@@ -69,7 +71,7 @@ type ClovaResponse struct {
 	Body struct {
 		Version           string `json:"version"`
 		SessionAttributes struct {
-			Question string `json:"string"`
+			Question string `json:"question"`
 			Correct  int    `json:"correct"`
 		} `json:"sessionAttributes"`
 		Response struct {
@@ -89,6 +91,24 @@ type ClovaResponse struct {
 	} `json:"body"`
 }
 
+type SumQuizSlots struct {
+	SumQuizLevel struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	} `json:"sumQuizLevel"`
+	SumQuiz struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	} `json:"sumQuiz"`
+}
+
+type SumQuizAnswerSlots struct {
+	Answer struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	} `json:"answer"`
+}
+
 func NewClovaResponse() *ClovaResponse {
 	response := ClovaResponse{}
 	response.Body.Version = "1.0"
@@ -99,14 +119,6 @@ func NewClovaResponse() *ClovaResponse {
 	return &response
 }
 
-// func SumQuizResponseText() string {
-// 	return "hoge"
-// }
-//
-// func SumQuizAnswerResponseText() string {
-// 	return "hoge"
-// }
-
 func SumQuiz(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	reqJsonBytes := ([]byte)(request.Body)
 	clovaRequest := new(ClovaRequest)
@@ -114,11 +126,15 @@ func SumQuiz(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 	var err error
 	if err = json.Unmarshal(reqJsonBytes, clovaRequest); err != nil {
 		log.Println("[ERROR]", err)
+		return events.APIGatewayProxyResponse{}, nil
 	}
 
 	response := NewClovaResponse()
 
 	var text string
+	sumQuizSlots := new(SumQuizSlots)
+	sumQuizAnswerSlots := new(SumQuizAnswerSlots)
+
 	// var result int
 	switch clovaRequest.Request.Type {
 	case "LaunchRequest":
@@ -126,15 +142,48 @@ func SumQuiz(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespo
 
 	case "IntentRequest":
 		if clovaRequest.Request.Intent.Name == "SumQuizIntent" {
-			text = ""
+
+			if err = json.Unmarshal(clovaRequest.Request.Intent.Slots, sumQuizSlots); err != nil {
+				log.Println("[ERROR]", err)
+				return events.APIGatewayProxyResponse{}, nil
+			}
+
+			text = "1足す1は何？"
+
+			response.Body.SessionAttributes.Question = text
+			response.Body.SessionAttributes.Correct = 2
+			response.Body.Response.ShouldEndSession = false
+
 		} else if clovaRequest.Request.Intent.Name == "SumQuizAnswerIntent" {
-			text = ""
+
+			if err = json.Unmarshal(clovaRequest.Request.Intent.Slots, sumQuizAnswerSlots); err != nil {
+				log.Println("[ERROR]", err)
+				return events.APIGatewayProxyResponse{}, nil
+			}
+
+			var answer int
+			if answer, err = strconv.Atoi(sumQuizAnswerSlots.Answer.Value); err != nil {
+				log.Println("[ERROR]", answer)
+				text = "すみません。理解できませんでした。"
+				break
+			}
+
+			if answer == clovaRequest.Session.SessionAttributes.Correct {
+				text = "正解！"
+				response.Body.Response.ShouldEndSession = true
+			} else {
+				log.Println("[Info] Correct", clovaRequest.Session.SessionAttributes.Correct)
+				log.Println("[Info] answer", answer)
+				text = fmt.Sprintf("残念！もう一度！ %s", clovaRequest.Session.SessionAttributes.Correct)
+			}
+
 		} else {
+			log.Println("[ERROR]", "Intent request parse error.")
 			text = "すみません。理解できませんでした。"
 		}
 
 	default:
-		log.Println("[ERROR]", "Intent request parse error.")
+		log.Println("[ERROR]", "Request type parse error.")
 		text = "すみません。理解できませんでした。"
 		break
 	}
